@@ -1,0 +1,89 @@
+networks:
+  custom_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+volumes:
+  certs:
+  pcap:
+  tls_keys:
+
+services:
+  server:
+    build:
+      context: ./flask
+    container_name: flask_app
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./shared_plan:/shared_plan
+    networks:
+      - custom_network
+
+  cert-generator:
+    image: openquantumsafe/oqs-ossl3:latest
+    container_name: cert-generator
+    volumes:
+      - certs:/certs
+      - ./cert-generator:/cert-generator
+    environment:
+      - SIGNATURE_ALGO=p256_mldsa44
+    stdin_open: true
+    tty: true
+    entrypoint: >
+      sh -c "/bin/sh /cert-generator/generate_certs.sh && tail -f /dev/null "
+    networks:
+      - custom_network
+
+  nginx:
+    build:
+      context: ./nginx
+    container_name: nginx_pq
+    ports:
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs/
+      - ./report:/opt/nginx/output
+      - ./nginx/start_server.py:/opt/nginx/start_server.py
+      - ./nginx/nginx.conf:/opt/nginx/nginx.conf
+    privileged: true
+    depends_on:
+      - cert-generator
+    networks:
+      custom_network:
+        ipv4_address: 192.168.1.100
+    entrypoint: ["/bin/sh", "-c", "nginx -c /opt/nginx/nginx.conf -g 'daemon off;' & sleep 1 && python3 /opt/nginx/start_server.py  && tail -f /dev/null"]
+
+  client-analysis:
+    build:
+      context: ./client
+    container_name: client_analysis
+    volumes:
+      - ./report:/app/output
+      - certs:/opt/certs
+      - pcap:/app/pcap
+      - tls_keys:/tls_keys
+      - ./client/start_client.py:/app/start_client.py
+    networks:
+      - custom_network
+    stdin_open: true
+    tty: true
+    environment:
+      - DEFAULT_GROUPS=p256_mlkem512
+      - SSLKEYLOGFILE=/tls_keys/tls-secrets.log
+    entrypoint: ["/bin/sh", "-c", "sleep 3 && python3 /app/start_client.py  && tail -f /dev/null"]
+
+  wireshark:
+    image: openquantumsafe/wireshark:latest
+    container_name: pq_wireshark
+    network_mode: "host"
+    environment:
+      - DISPLAY=host.docker.internal:0.0
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix 
+      - pcap:/pcap
+    stdin_open: true
+    tty: true
+    command: >
+      tshark -i any -f "tcp port 443 and host 192.168.1.100" -w /pcap/capture.pcap   
