@@ -1,0 +1,17 @@
+# === AWS credentials (per sicurezza, se mai le metti da qualche parte) ===
+*.pem
+*.key
+*.pub
+*.crt
+*.aws-secret
+id_rsa
+
+
+# === Python ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+.vscode

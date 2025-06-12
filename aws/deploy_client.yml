@@ -1,0 +1,11 @@
+- name: Copia progetto client su macchina EC2
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Copia progetto client in /home/ubuntu
+      synchronize:
+        src: ./client/
+        dest: /home/ubuntu/client/
+        recursive: yes
+        delete: no
